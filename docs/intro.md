@@ -4,7 +4,6 @@ id: welcome
 title: 👋 Welcome
 sidebar_position: 1
 ---
-
 An online API documentation with examples so you can start building web apps with Fiber right away!
 
 **Fiber** is an [Express](https://github.com/expressjs/express) inspired **web framework** built on top of [Fasthttp](https://github.com/valyala/fasthttp), the **fastest** HTTP engine for [Go](https://go.dev/doc/). Designed to **ease** things up for **fast** development with **zero memory allocation** and **performance** in mind.
@@ -13,7 +12,7 @@ These docs are for **Fiber v2**, which was released on **September 15th, 2020**.
 
 ### Installation
 
-First of all, [download](https://go.dev/dl/) and install Go. `1.16` or higher is required.
+First of all, [download](https://go.dev/dl/) and install Go. `1.17` or higher is required.
 
 Installation is done using the [`go get`](https://pkg.go.dev/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) command:
 
@@ -185,9 +184,9 @@ app.Listen(":3000")
 Now, you can load the files that are in the `./public` directory:
 
 ```bash
-http://localhost:8080/hello.html
-http://localhost:8080/js/jquery.js
-http://localhost:8080/css/style.css
+http://localhost:3000/hello.html
+http://localhost:3000/js/jquery.js
+http://localhost:3000/css/style.css
 ```
 
 ### Note

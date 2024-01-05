@@ -268,6 +268,20 @@ func Test_App_serverErrorHandler_Internal_Error(t *testing.T) {
 	utils.AssertEqual(t, c.fasthttp.Response.StatusCode(), StatusBadRequest)
 }
 
+func Test_App_serverErrorHandler_Network_Error(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	app.serverErrorHandler(c.fasthttp, &net.DNSError{
+		Err:       "test error",
+		Name:      "test host",
+		IsTimeout: false,
+	})
+	utils.AssertEqual(t, string(c.fasthttp.Response.Body()), utils.StatusMessage(StatusBadGateway))
+	utils.AssertEqual(t, c.fasthttp.Response.StatusCode(), StatusBadGateway)
+}
+
 func Test_App_Nested_Params(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -741,9 +755,7 @@ func Test_App_Shutdown(t *testing.T) {
 		t.Parallel()
 		app := &App{}
 		if err := app.Shutdown(); err != nil {
-			if err.Error() != "shutdown: server is not running" {
-				t.Fatal()
-			}
+			utils.AssertEqual(t, "shutdown: server is not running", err.Error())
 		}
 	})
 }
@@ -780,6 +792,53 @@ func Test_App_ShutdownWithTimeout(t *testing.T) {
 	timer := time.NewTimer(time.Second * 5)
 	select {
 	case <-timer.C:
+		t.Fatal("idle connections not closed on shutdown")
+	case err := <-shutdownErr:
+		if err == nil || !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("unexpected err %v. Expecting %v", err, context.DeadlineExceeded)
+		}
+	}
+}
+
+func Test_App_ShutdownWithContext(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/", func(ctx *Ctx) error {
+		time.Sleep(5 * time.Second)
+		return ctx.SendString("body")
+	})
+
+	ln := fasthttputil.NewInmemoryListener()
+
+	go func() {
+		utils.AssertEqual(t, nil, app.Listener(ln))
+	}()
+
+	time.Sleep(1 * time.Second)
+
+	go func() {
+		conn, err := ln.Dial()
+		if err != nil {
+			t.Errorf("unexepcted error: %v", err)
+		}
+
+		if _, err = conn.Write([]byte("GET / HTTP/1.1\r\nHost: google.com\r\n\r\n")); err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+	}()
+
+	time.Sleep(1 * time.Second)
+
+	shutdownErr := make(chan error)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		defer cancel()
+		shutdownErr <- app.ShutdownWithContext(ctx)
+	}()
+
+	select {
+	case <-time.After(5 * time.Second):
 		t.Fatal("idle connections not closed on shutdown")
 	case err := <-shutdownErr:
 		if err == nil || !errors.Is(err, context.DeadlineExceeded) {
@@ -1399,7 +1458,6 @@ func (invalidView) Render(io.Writer, string, interface{}, ...string) error { pan
 
 // go test -run Test_App_Init_Error_View
 func Test_App_Init_Error_View(t *testing.T) {
-	t.Parallel()
 	app := New(Config{Views: invalidView{}})
 
 	defer func() {
@@ -1559,7 +1617,6 @@ func Test_App_Server(t *testing.T) {
 }
 
 func Test_App_Error_In_Fasthttp_Server(t *testing.T) {
-	t.Parallel()
 	app := New()
 	app.config.ErrorHandler = func(ctx *Ctx, err error) error {
 		return errors.New("fake error")
@@ -1741,4 +1798,139 @@ func TestApp_GetRoutes(t *testing.T) {
 		utils.AssertEqual(t, true, ok)
 		utils.AssertEqual(t, name, route.Name)
 	}
+}
+
+func Test_Middleware_Route_Naming_With_Use(t *testing.T) {
+	named := "named"
+	app := New()
+
+	app.Get("/unnamed", func(c *Ctx) error {
+		return c.Next()
+	})
+
+	app.Post("/named", func(c *Ctx) error {
+		return c.Next()
+	}).Name(named)
+
+	app.Use(func(c *Ctx) error {
+		return c.Next()
+	}) // no name - logging MW
+
+	app.Use(func(c *Ctx) error {
+		return c.Next()
+	}).Name("corsMW")
+
+	app.Use(func(c *Ctx) error {
+		return c.Next()
+	}).Name("compressMW")
+
+	app.Use(func(c *Ctx) error {
+		return c.Next()
+	}) // no name - cache MW
+
+	grp := app.Group("/pages").Name("pages.")
+	grp.Use(func(c *Ctx) error {
+		return c.Next()
+	}).Name("csrfMW")
+
+	grp.Get("/home", func(c *Ctx) error {
+		return c.Next()
+	}).Name("home")
+
+	grp.Get("/unnamed", func(c *Ctx) error {
+		return c.Next()
+	})
+
+	for _, route := range app.GetRoutes() {
+		switch route.Path {
+		case "/":
+			utils.AssertEqual(t, "compressMW", route.Name)
+		case "/unnamed":
+			utils.AssertEqual(t, "", route.Name)
+		case "named":
+			utils.AssertEqual(t, named, route.Name)
+		case "/pages":
+			utils.AssertEqual(t, "pages.csrfMW", route.Name)
+		case "/pages/home":
+			utils.AssertEqual(t, "pages.home", route.Name)
+		case "/pages/unnamed":
+			utils.AssertEqual(t, "", route.Name)
+		}
+	}
+}
+
+func Test_Route_Naming_Issue_2671_2685(t *testing.T) {
+	app := New()
+
+	app.Get("/", emptyHandler).Name("index")
+	utils.AssertEqual(t, "/", app.GetRoute("index").Path)
+
+	app.Get("/a/:a_id", emptyHandler).Name("a")
+	utils.AssertEqual(t, "/a/:a_id", app.GetRoute("a").Path)
+
+	app.Post("/b/:bId", emptyHandler).Name("b")
+	utils.AssertEqual(t, "/b/:bId", app.GetRoute("b").Path)
+
+	c := app.Group("/c")
+	c.Get("", emptyHandler).Name("c.get")
+	utils.AssertEqual(t, "/c", app.GetRoute("c.get").Path)
+
+	c.Post("", emptyHandler).Name("c.post")
+	utils.AssertEqual(t, "/c", app.GetRoute("c.post").Path)
+
+	c.Get("/d", emptyHandler).Name("c.get.d")
+	utils.AssertEqual(t, "/c/d", app.GetRoute("c.get.d").Path)
+
+	d := app.Group("/d/:d_id")
+	d.Get("", emptyHandler).Name("d.get")
+	utils.AssertEqual(t, "/d/:d_id", app.GetRoute("d.get").Path)
+
+	d.Post("", emptyHandler).Name("d.post")
+	utils.AssertEqual(t, "/d/:d_id", app.GetRoute("d.post").Path)
+
+	e := app.Group("/e/:eId")
+	e.Get("", emptyHandler).Name("e.get")
+	utils.AssertEqual(t, "/e/:eId", app.GetRoute("e.get").Path)
+
+	e.Post("", emptyHandler).Name("e.post")
+	utils.AssertEqual(t, "/e/:eId", app.GetRoute("e.post").Path)
+
+	e.Get("f", emptyHandler).Name("e.get.f")
+	utils.AssertEqual(t, "/e/:eId/f", app.GetRoute("e.get.f").Path)
+
+	postGroup := app.Group("/post/:postId")
+	postGroup.Get("", emptyHandler).Name("post.get")
+	utils.AssertEqual(t, "/post/:postId", app.GetRoute("post.get").Path)
+
+	postGroup.Post("", emptyHandler).Name("post.update")
+	utils.AssertEqual(t, "/post/:postId", app.GetRoute("post.update").Path)
+
+	// Add testcase for routes use the same PATH on different methods
+	app.Get("/users", nil).Name("get-users")
+	app.Post("/users", nil).Name("add-user")
+	getUsers := app.GetRoute("get-users")
+	utils.AssertEqual(t, getUsers.Path, "/users")
+
+	addUser := app.GetRoute("add-user")
+	utils.AssertEqual(t, addUser.Path, "/users")
+
+	// Add testcase for routes use the same PATH on different methods (for groups)
+	newGrp := app.Group("/name-test")
+	newGrp.Get("/users", nil).Name("grp-get-users")
+	newGrp.Post("/users", nil).Name("grp-add-user")
+	getUsers = app.GetRoute("grp-get-users")
+	utils.AssertEqual(t, getUsers.Path, "/name-test/users")
+
+	addUser = app.GetRoute("grp-add-user")
+	utils.AssertEqual(t, addUser.Path, "/name-test/users")
+
+	// Add testcase for HEAD route naming
+	app.Get("/simple-route", emptyHandler).Name("simple-route")
+	app.Head("/simple-route", emptyHandler).Name("simple-route2")
+
+	sRoute := app.GetRoute("simple-route")
+	utils.AssertEqual(t, sRoute.Path, "/simple-route")
+
+	sRoute2 := app.GetRoute("simple-route2")
+	utils.AssertEqual(t, sRoute2.Path, "/simple-route")
 }

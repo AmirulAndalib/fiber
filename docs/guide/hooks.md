@@ -1,6 +1,6 @@
 ---
 id: hooks
-title: 🪝 Hooks
+title: 🎣 Hooks
 sidebar_position: 6
 ---
 
@@ -24,9 +24,9 @@ type OnRouteHandler = func(Route) error
 type OnNameHandler = OnRouteHandler
 type OnGroupHandler = func(Group) error
 type OnGroupNameHandler = OnGroupHandler
-type OnListenHandler = func() error
+type OnListenHandler = func(ListenData) error
 type OnForkHandler = func(int) error
-type OnShutdownHandler = OnListenHandler
+type OnShutdownHandler = func() error
 type OnMountHandler = func(*App) error
 ```
 
@@ -35,7 +35,7 @@ type OnMountHandler = func(*App) error
 OnRoute is a hook to execute user functions on each route registeration. Also you can get route properties by **route** parameter.
 
 ```go title="Signature"
-func (app *App) OnRoute(handler ...OnRouteHandler)
+func (h *Hooks) OnRoute(handler ...OnRouteHandler)
 ```
 
 ## OnName
@@ -47,7 +47,7 @@ OnName only works with naming routes, not groups.
 :::
 
 ```go title="Signature"
-func (app *App) OnName(handler ...OnNameHandler)
+func (h *Hooks) OnName(handler ...OnNameHandler)
 ```
 
 <Tabs>
@@ -104,7 +104,7 @@ func main() {
 OnGroup is a hook to execute user functions on each group registeration. Also you can get group properties by **group** parameter.
 
 ```go title="Signature"
-func (app *App) OnGroup(handler ...OnGroupHandler)
+func (h *Hooks) OnGroup(handler ...OnGroupHandler)
 ```
 
 ## OnGroupName
@@ -116,7 +116,7 @@ OnGroupName only works with naming groups, not routes.
 :::
 
 ```go title="Signature"
-func (app *App) OnGroupName(handler ...OnGroupNameHandler)
+func (h *Hooks) OnGroupName(handler ...OnGroupNameHandler)
 ```
 
 ## OnListen
@@ -124,15 +124,41 @@ func (app *App) OnGroupName(handler ...OnGroupNameHandler)
 OnListen is a hook to execute user functions on Listen, ListenTLS, Listener.
 
 ```go title="Signature"
-func (app *App) OnListen(handler ...OnListenHandler)
+func (h *Hooks) OnListen(handler ...OnListenHandler)
 ```
+
+<Tabs>
+<TabItem value="onlisten-example" label="OnListen Example">
+
+```go
+app := fiber.New(fiber.Config{
+  DisableStartupMessage: true,
+})
+
+app.Hooks().OnListen(func(listenData fiber.ListenData) error {
+  if fiber.IsChild() {
+	  return nil
+  }
+  scheme := "http"
+  if data.TLS {
+    scheme = "https"
+  }
+  log.Println(scheme + "://" + listenData.Host + ":" + listenData.Port)
+  return nil
+})
+
+app.Listen(":5000")
+```
+
+</TabItem>
+</Tabs>
 
 ## OnFork
 
 OnFork is a hook to execute user functions on Fork.
 
 ```go title="Signature"
-func (app *App) OnFork(handler ...OnForkHandler)
+func (h *Hooks) OnFork(handler ...OnForkHandler)
 ```
 
 ## OnShutdown
@@ -140,7 +166,7 @@ func (app *App) OnFork(handler ...OnForkHandler)
 OnShutdown is a hook to execute user functions after Shutdown.
 
 ```go title="Signature"
-func (app *App) OnShutdown(handler ...OnShutdownHandler)
+func (h *Hooks) OnShutdown(handler ...OnShutdownHandler)
 ```
 
 ## OnMount

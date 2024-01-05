@@ -1,9 +1,14 @@
 ---
 id: compress
-title: Compress
 ---
 
+# Compress
+
 Compression middleware for [Fiber](https://github.com/gofiber/fiber) that will compress the response using `gzip`, `deflate` and `brotli` compression depending on the [Accept-Encoding](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Accept-Encoding) header.
+
+:::note
+The compression middleware refrains from compressing bodies that are smaller than 200 bytes. This decision is based on the observation that, in such cases, the compressed size is likely to exceed the original size, making compression inefficient. [more](https://github.com/valyala/fasthttp/blob/497922a21ef4b314f393887e9c6147b8c3e3eda4/http.go#L1713-L1715)
+:::
 
 ## Signatures
 
@@ -25,10 +30,10 @@ import (
 After you initiate your Fiber app, you can use the following possibilities:
 
 ```go
-// Default middleware config
+// Initialize default config
 app.Use(compress.New())
 
-// Provide a custom compression level
+// Or extend your config for customization
 app.Use(compress.New(compress.Config{
     Level: compress.LevelBestSpeed, // 1
 }))
@@ -44,24 +49,19 @@ app.Use(compress.New(compress.Config{
 
 ## Config
 
-```go
-// Config defines the config for middleware.
-type Config struct {
-    // Next defines a function to skip this middleware when returned true.
-    //
-    // Optional. Default: nil
-    Next func(c *fiber.Ctx) bool
+### Config
 
-    // CompressLevel determines the compression algoritm
-    //
-    // Optional. Default: LevelDefault
-    // LevelDisabled:         -1
-    // LevelDefault:          0
-    // LevelBestSpeed:        1
-    // LevelBestCompression:  2
-    Level int
-}
-```
+| Property | Type                    | Description                                                         | Default            |
+|:---------|:------------------------|:--------------------------------------------------------------------|:-------------------|
+| Next     | `func(*fiber.Ctx) bool` | Next defines a function to skip this middleware when returned true. | `nil`              |
+| Level    | `Level`                 | Level determines the compression algorithm.                         | `LevelDefault (0)` |
+
+Possible values for the "Level" field are:
+
+- `LevelDisabled (-1)`: Compression is disabled.
+- `LevelDefault (0)`: Default compression level.
+- `LevelBestSpeed (1)`: Best compression speed.
+- `LevelBestCompression (2)`: Best compression.
 
 ## Default Config
 

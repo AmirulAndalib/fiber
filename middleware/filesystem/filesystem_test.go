@@ -119,6 +119,7 @@ func Test_FileSystem(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, tt.url, nil))
@@ -217,4 +218,18 @@ func Test_FileSystem_UsingParam_NonFile(t *testing.T) {
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 404, resp.StatusCode)
+}
+
+func Test_FileSystem_UsingContentTypeCharset(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Use(New(Config{
+		Root:               http.Dir("../../.github/testdata/fs/index.html"),
+		ContentTypeCharset: "UTF-8",
+	}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, 200, resp.StatusCode)
+	utils.AssertEqual(t, "text/html; charset=UTF-8", resp.Header.Get("Content-Type"))
 }

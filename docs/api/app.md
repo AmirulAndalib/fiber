@@ -145,10 +145,10 @@ func (app *App) MountPath() string
 
 ```go title="Examples"
 func main() {
-	app := New()
-	one := New()
-	two := New()
-	three := New()
+	app := fiber.New()
+	one := fiber.New()
+	two := fiber.New()
+	three := fiber.New()
 
 	two.Mount("/three", three)
 	one.Mount("/two", two)
@@ -205,7 +205,7 @@ func main() {
 
   app.Route("/test", func(api fiber.Router) {
       api.Get("/foo", handler).Name("foo") // /test/foo (name: test.foo)
-    api.Get("/bar", handler).Name("bar") // /test/bar (name: test.bar)
+      api.Get("/bar", handler).Name("bar") // /test/bar (name: test.bar)
   }, "test.")
 
   log.Fatal(app.Listen(":3000"))
@@ -236,9 +236,12 @@ Shutdown gracefully shuts down the server without interrupting any active connec
 
 ShutdownWithTimeout will forcefully close any active connections after the timeout expires.
 
+ShutdownWithContext shuts down the server including by force if the context's deadline is exceeded.
+
 ```go
 func (app *App) Shutdown() error
 func (app *App) ShutdownWithTimeout(timeout time.Duration) error
+func (app *App) ShutdownWithContext(ctx context.Context) error
 ```
 
 ## HandlersCount
@@ -525,6 +528,27 @@ Using `ListenTLS` defaults to the following config \( use `Listener` to provide 
 }
 ```
 
+## ListenTLSWithCertificate
+
+```go title="Signature"
+func (app *App) ListenTLS(addr string, cert tls.Certificate) error
+```
+
+```go title="Examples"
+app.ListenTLSWithCertificate(":443", cert);
+```
+
+Using `ListenTLSWithCertificate` defaults to the following config \( use `Listener` to provide your own config \)
+
+```go title="Default \*tls.Config"
+&tls.Config{
+    MinVersion:               tls.VersionTLS12,
+    Certificates: []tls.Certificate{
+        cert,
+    },
+}
+```
+
 ## ListenMutualTLS
 
 ListenMutualTLS serves HTTPs requests from the given address using certFile, keyFile and clientCertFile are the paths to TLS certificate and key file
@@ -538,6 +562,31 @@ app.ListenMutualTLS(":443", "./cert.pem", "./cert.key", "./ca-chain-cert.pem");
 ```
 
 Using `ListenMutualTLS` defaults to the following config \( use `Listener` to provide your own config \)
+
+```go title="Default \*tls.Config"
+&tls.Config{
+	MinVersion: tls.VersionTLS12,
+	ClientAuth: tls.RequireAndVerifyClientCert,
+	ClientCAs:  clientCertPool,
+	Certificates: []tls.Certificate{
+		cert,
+	},
+}
+```
+
+## ListenMutualTLSWithCertificate
+
+ListenMutualTLSWithCertificate serves HTTPs requests from the given address using certFile, keyFile and clientCertFile are the paths to TLS certificate and key file
+
+```go title="Signature"
+func (app *App) ListenMutualTLSWithCertificate(addr string, cert tls.Certificate, clientCertPool *x509.CertPool) error
+```
+
+```go title="Examples"
+app.ListenMutualTLSWithCertificate(":443", cert, clientCertPool);
+```
+
+Using `ListenMutualTLSWithCertificate` defaults to the following config \( use `Listener` to provide your own config \)
 
 ```go title="Default \*tls.Config"
 &tls.Config{
@@ -594,7 +643,7 @@ resp, _ := app.Test(req)
 
 // Do something with results:
 if resp.StatusCode == fiber.StatusOK {
-  body, _ := ioutil.ReadAll(resp.Body)
+  body, _ := io.ReadAll(resp.Body)
   fmt.Println(string(body)) // => Hello, World!
 }
 ```

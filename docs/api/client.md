@@ -19,8 +19,48 @@ func (c *Client) Patch(url string) *Agent
 func (c *Client) Delete(url string) *Agent
 ```
 
-## ✨ Agent
+Here we present a brief example demonstrating the simulation of a proxy using our `*fiber.Agent` methods.
+```go
+// Get something
+func getSomething(c *fiber.Ctx) (err error) {
+	agent := fiber.Get("<URL>")
+	statusCode, body, errs := agent.Bytes()
+	if len(errs) > 0 {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"errs": errs,
+		})
+	}
 
+	var something fiber.Map
+	err = json.Unmarshal(body, &something)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"err": err,
+		})
+	}
+
+	return c.Status(statusCode).JSON(something)
+}
+
+// Post something
+func createSomething(c *fiber.Ctx) (err error) {
+	agent := fiber.Post("<URL>")
+	agent.Body(c.Body()) // set body received by request
+	statusCode, body, errs := agent.Bytes()
+	if len(errs) > 0 {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"errs": errs,
+		})
+	}
+
+    // pass status code and body received by the proxy
+	return c.Status(statusCode).Send(body)
+}
+```
+Based on this short example, we can perceive that using the `*fiber.Client` is very straightforward and intuitive.
+
+
+## ✨ Agent
 `Agent` is built on top of FastHTTP's [`HostClient`](https://github.com/valyala/fasthttp/blob/master/client.go#L603) which has lots of convenient helper methods such as dedicated methods for request methods.
 
 ### Parse
@@ -228,10 +268,10 @@ agent.BodyStream(strings.NewReader("body=stream"), -1)
 
 ### JSON
 
-JSON sends a JSON request by setting the Content-Type header to `application/json`.
+JSON sends a JSON request by setting the Content-Type header to the `ctype` parameter. If no `ctype` is passed in, the header is set to `application/json`.
 
 ```go title="Signature"
-func (a *Agent) JSON(v interface{}) *Agent
+func (a *Agent) JSON(v interface{}, ctype ...string) *Agent
 ```
 
 ```go title="Example"
@@ -496,6 +536,61 @@ agent.SetResponse(resp)
 // ...
 ReleaseResponse(resp)
 ```
+
+<details><summary>Example handling for response values</summary>
+
+```go title="Example handling response"
+// Create a Fiber HTTP client agent
+agent := fiber.Get("https://httpbin.org/get")
+
+// Acquire a response object to store the result
+resp := fiber.AcquireResponse()
+agent.SetResponse(resp)
+
+// Perform the HTTP GET request
+code, body, errs := agent.String()
+if errs != nil {
+    // Handle any errors that occur during the request
+    panic(errs)
+}
+
+// Print the HTTP response code and body
+fmt.Println("Response Code:", code)
+fmt.Println("Response Body:", body)
+
+// Visit and print all the headers in the response
+resp.Header.VisitAll(func(key, value []byte) {
+    fmt.Println("Header", string(key), "value", string(value))
+})
+
+// Release the response to free up resources
+fiber.ReleaseResponse(resp)
+```
+
+Output:
+```txt title="Output"
+Response Code: 200
+Response Body: {
+  "args": {}, 
+  "headers": {
+    "Host": "httpbin.org", 
+    "User-Agent": "fiber", 
+    "X-Amzn-Trace-Id": "Root=1-653763d0-2555d5ba3838f1e9092f9f72"
+  }, 
+  "origin": "83.137.191.1", 
+  "url": "https://httpbin.org/get"
+}
+
+Header Content-Length value 226
+Header Content-Type value application/json
+Header Server value gunicorn/19.9.0
+Header Date value Tue, 24 Oct 2023 06:27:28 GMT
+Header Connection value keep-alive
+Header Access-Control-Allow-Origin value *
+Header Access-Control-Allow-Credentials value true
+```
+
+</details>
 
 ### Dest
 

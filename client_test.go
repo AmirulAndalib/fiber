@@ -605,6 +605,14 @@ func (*readErrorConn) RemoteAddr() net.Addr {
 	return nil
 }
 
+func (*readErrorConn) SetReadDeadline(_ time.Time) error {
+	return nil
+}
+
+func (*readErrorConn) SetWriteDeadline(_ time.Time) error {
+	return nil
+}
+
 func Test_Client_Agent_RetryIf(t *testing.T) {
 	t.Parallel()
 
@@ -643,6 +651,7 @@ func Test_Client_Agent_RetryIf(t *testing.T) {
 
 func Test_Client_Agent_Json(t *testing.T) {
 	t.Parallel()
+	// Test without ctype parameter
 	handler := func(c *Ctx) error {
 		utils.AssertEqual(t, MIMEApplicationJSON, string(c.Request().Header.ContentType()))
 
@@ -651,6 +660,19 @@ func Test_Client_Agent_Json(t *testing.T) {
 
 	wrapAgent := func(a *Agent) {
 		a.JSON(data{Success: true})
+	}
+
+	testAgent(t, handler, wrapAgent, `{"success":true}`)
+
+	// Test with ctype parameter
+	handler = func(c *Ctx) error {
+		utils.AssertEqual(t, "application/problem+json", string(c.Request().Header.ContentType()))
+
+		return c.Send(c.Request().Body())
+	}
+
+	wrapAgent = func(a *Agent) {
+		a.JSON(data{Success: true}, "application/problem+json")
 	}
 
 	testAgent(t, handler, wrapAgent, `{"success":true}`)
